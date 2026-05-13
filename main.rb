@@ -15,9 +15,7 @@ class FalseClass
 end
 
 module Persistible
-  def id
-    @id
-  end
+
 end
 
 class Class
@@ -26,7 +24,26 @@ class Class
 
     @tabla = TADB::DB.table("#{self}")
 
+    # define_singleton_method("find_by_#{descripcion[:named].to_s}") do |parametro|
+    #   @tabla.entries.select { |entidad_persistida| entidad_persistida[descripcion[:named]] == parametro }
+    # end
+
+    # define_singleton_method("find_by_id") do |id|
+    #   @tabla.entries.select { |entidad_persistida| entidad_persistida[:id] == id }
+    # end
+
     if @tipos.nil?
+      define_singleton_method("method_missing") do |nombre_metodo, *argumentos, &block|
+        if nombre_metodo.to_s.start_with?("find_by_")
+          return @tabla.entries.select { |entidad_persistida| entidad_persistida[:"#{nombre_metodo.to_s.delete_prefix("find_by_")}"] == argumentos.first }
+        else
+          super
+        end
+      end
+
+      define_singleton_method("respond_to_missing?") do |nombre_metodo, include_private = false|
+        nombre_metodo.to_s.start_with?("find_by_") || super
+      end
       
       @tipos = {}
 
@@ -56,7 +73,8 @@ class Class
           @id = self.class.tabla.insert(valores)
         
         else          
-          valores[:id] = self.id
+          valores[:id] = self.id #capaz para mantener consistencia con que id no forme parte de valores, debería hacer un variable que muera en el método
+          #Como esta => id_original = self.id
           self.class.tabla.delete(self.id)
           self.class.tabla.insert(valores)
         end
@@ -154,6 +172,21 @@ a3 = Person.all_instances.at(1)
 a3.first_name = "Natalia Silvia"
 a3.save!
 
+a1.last_name = "Maltas"
+a1.save!
+
+puts Person.respond_to?("find_by_id")
+puts Person.respond_to?("find_by_first_name")
+puts Person.respond_to?("find_by_last_name")
+puts Person.respond_to?("find_by_age")
+puts Person.respond_to?("find_by_admin")
+#puts Person.singleton_class.instance_methods
+
+puts Person.find_by_age(22)
+puts Person.find_by_last_name("Maltas")
+
+Person.tabla.clear
+
 # puts a1.first_name
 
 # a1.save!
@@ -178,5 +211,5 @@ a3.save!
 
 # Person.new.refresh!
 
-#binding.pry
+# binding.pry
 
