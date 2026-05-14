@@ -24,18 +24,14 @@ class Class
 
     @tabla = TADB::DB.table("#{self}")
 
-    # define_singleton_method("find_by_#{descripcion[:named].to_s}") do |parametro|
-    #   @tabla.entries.select { |entidad_persistida| entidad_persistida[descripcion[:named]] == parametro }
-    # end
-
-    # define_singleton_method("find_by_id") do |id|
-    #   @tabla.entries.select { |entidad_persistida| entidad_persistida[:id] == id }
-    # end
-
     if @tipos.nil?
       define_singleton_method("method_missing") do |nombre_metodo, *argumentos, &block|
-        if nombre_metodo.to_s.start_with?("find_by_")
-          return @tabla.entries.select { |entidad_persistida| entidad_persistida[:"#{nombre_metodo.to_s.delete_prefix("find_by_")}"] == argumentos.first }
+        if nombre_metodo.to_s.start_with?("find_by_") && !self.instance_methods.include?(nombre_metodo.to_s.delete_prefix("find_by_").to_sym)
+          return @tabla.entries.select { |entidad_persistida| entidad_persistida[:"#{nombre_metodo.to_s.delete_prefix("find_by_")}"] === argumentos.first }
+        
+        elsif nombre_metodo.to_s.start_with?("find_by_")
+          lista_de_objetos = @tabla.entries.map { |hash| self.crear_segun_hash(hash)}
+          return lista_de_objetos.select { |objeto| objeto.send(nombre_metodo.to_s.delete_prefix("find_by_")) === argumentos.first}        
         else
           super
         end
@@ -141,6 +137,15 @@ class Person
 
   attr_accessor :some_other_non_persistible_attribute
 
+  def es_mayor?
+    self.age > 17
+  end
+  def has_last_name(last_name)
+    self.last_name == last_name
+  end
+
+
+
 end
 
 puts Person.new.respond_to?(:first_name)
@@ -184,6 +189,9 @@ puts Person.respond_to?("find_by_admin")
 
 puts Person.find_by_age(22)
 puts Person.find_by_last_name("Maltas")
+puts "find_by de mensajes"
+puts Person.find_by_es_mayor?(false)
+puts Person.find_by_has_last_name("Maltas")
 
 Person.tabla.clear
 
@@ -211,5 +219,5 @@ Person.tabla.clear
 
 # Person.new.refresh!
 
-# binding.pry
+binding.pry
 
