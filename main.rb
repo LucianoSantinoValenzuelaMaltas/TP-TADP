@@ -26,12 +26,9 @@ class Class
 
     if @tipos.nil?
       define_singleton_method("method_missing") do |nombre_metodo, *argumentos, &block|
-        if nombre_metodo.to_s.start_with?("find_by_") && !self.instance_methods.include?(nombre_metodo.to_s.delete_prefix("find_by_").to_sym)
-          return @tabla.entries.select { |entidad_persistida| entidad_persistida[:"#{nombre_metodo.to_s.delete_prefix("find_by_")}"] === argumentos.first }
-        
-        elsif nombre_metodo.to_s.start_with?("find_by_")
+        if nombre_metodo.to_s.start_with?("find_by_")
           lista_de_objetos = @tabla.entries.map { |hash| self.crear_segun_hash(hash)}
-          return lista_de_objetos.select { |objeto| objeto.send(nombre_metodo.to_s.delete_prefix("find_by_")) === argumentos.first}        
+          return lista_de_objetos.select { |objeto| objeto.send(nombre_metodo.to_s.delete_prefix("find_by_")) === argumentos.first}      
         else
           super
         end
@@ -57,22 +54,30 @@ class Class
         @tabla.delete(id)
       end
 
-      define_method("save!") do
+      define_singleton_method("nueva_entrada") do |instancia|
         valores = {}
-        self.class.tipos.keys.each {|atributo| valores[atributo] = self.send(atributo)}
-        
+        @tipos.keys.each {|atributo| valores[atributo] = instancia.send("#{atributo}")}
+        @tabla.insert(valores)
+      end
+
+      define_singleton_method("actualizar_entrada") do |instancia|
+        valores = {}
+        @tipos.keys.each {|atributo| valores[atributo] = instancia.send("#{atributo}")}
+        valores[:id] = instancia.id
+        self.remover_entrada(instancia.id)
+        @tabla.insert(valores)
+      end
+
+      define_method("save!") do
         if @id.nil?
           define_singleton_method("id") do
             @id
           end
 
-          @id = self.class.tabla.insert(valores)
+          @id = self.class.nueva_entrada(self)
         
         else          
-          valores[:id] = self.id #capaz para mantener consistencia con que id no forme parte de valores, debería hacer un variable que muera en el método
-          #Como esta => id_original = self.id
-          self.class.tabla.delete(self.id)
-          self.class.tabla.insert(valores)
+          self.class.actualizar_entrada(self)
         end
       end
 
