@@ -15,27 +15,110 @@ class FalseClass
 end
 
 module Persistible
+      def save!
+        if @id.nil?
+          define_singleton_method("id") do
+            @id
+          end
+        end
+        @id = self.class.save!(self)
+      end
 
+      def refresh!
+        if @id.nil?
+          raise "Falla! Este objeto no tiene id!"
+        end
+        
+        mi_entrada = self.class.refresh!(self.id)
+        self.class.tipos.keys.each {|atributo| self.send("#{atributo}=", mi_entrada[atributo])}
+      end
+
+      def forget!
+        if @id.nil?
+          raise "Falla! Este objeto no tiene id!"
+        end
+
+        self.class.forget!(self.id)
+        self.remove_instance_variable("@id")
+      end
+end
+
+class Tabla
+  def initialize(owner)
+    @owner = owner
+    @tabla = TADB::DB.table("#{owner}")
+  end
+
+      def method_missing(nombre_metodo, *argumentos, &block)
+        if nombre_metodo.to_s.start_with?("find_by_")
+          lista_de_objetos = @tabla.entries.map { |hash| @owner.crear_segun_hash(hash)}
+          return lista_de_objetos.select { |objeto| objeto.send(nombre_metodo.to_s.delete_prefix("find_by_")) === argumentos.first}      
+        else
+          super(nombre_metodo, *argumentos, &block)
+        end
+      end
+
+      def respond_to_missing?(nombre_metodo, include_private = false)
+        nombre_metodo.to_s.start_with?("find_by_") || super(nombre_metodo, include_private = false)
+      end
+
+      def all_instances
+        hashees = @tabla.entries
+
+        objetos_persisitidos = []
+
+        hashees.each {|hash| objetos_persisitidos.append(@owner.crear_segun_hash(hash))}
+        
+        return objetos_persisitidos
+      end
+
+
+      def forget!(id)
+        @tabla.delete(id)
+      end
+
+      def refresh!(id)
+        @tabla.entries.find {|hash| hash[:id] == id}
+      end
+
+      def save!(objeto)
+        valores = {}
+
+        @owner.tipos.keys.each do |atributo|
+          if objeto.send(atributo).respond_to?(:save!)
+            id = objeto.send(atributo).save! 
+            valores[atributo] = id
+          else
+            valores[atributo] = objeto.send("#{atributo}")
+          end
+        end
+
+        if !objeto.id.nil?
+          valores[:id] = objeto.id
+          self.forget!(objeto.id)
+        end 
+
+        @tabla.insert(valores)
+      end
 end
 
 class Class
   def has_one(tipo, descripcion)
     attr_accessor descripcion[:named]
 
-    @tabla = TADB::DB.table("#{self}")
+    @tabla = Tabla.new(self)
 
     if @tipos.nil?
       define_singleton_method("method_missing") do |nombre_metodo, *argumentos, &block|
-        if nombre_metodo.to_s.start_with?("find_by_")
-          lista_de_objetos = @tabla.entries.map { |hash| self.crear_segun_hash(hash)}
-          return lista_de_objetos.select { |objeto| objeto.send(nombre_metodo.to_s.delete_prefix("find_by_")) === argumentos.first}      
+        if @tabla.respond_to?(nombre_metodo)
+          @tabla.send(nombre_metodo, *argumentos, &block)    
         else
-          super
+          super(nombre_metodo, *argumentos, &block)
         end
       end
 
       define_singleton_method("respond_to_missing?") do |nombre_metodo, include_private = false|
-        nombre_metodo.to_s.start_with?("find_by_") || super(nombre_metodo, include_private = false)
+        @tabla.respond_to?(nombre_metodo) || super(nombre_metodo, include_private = false)
       end
       
       @tipos = {}
@@ -50,71 +133,6 @@ class Class
         @tabla
       end
 
-      define_singleton_method("remover_entrada") do |id|
-        @tabla.delete(id)
-      end
-
-      define_singleton_method("entrada_por_id") do |id|
-        @tabla.entries.find {|hash| hash[:id] == id}
-      end
-
-      define_singleton_method("nueva_entrada") do |instancia|
-        valores = {}
-
-        @tipos.keys.each do |atributo|
-          if instancia.send(atributo).respond_to?(:save!)
-            id = instancia.send(atributo).save! 
-            valores[atributo] = id
-          else
-            valores[atributo] = instancia.send("#{atributo}")
-          end
-        end
-
-        if !instancia.id.nil?
-          valores[:id] = instancia.id
-          self.remover_entrada(instancia.id)
-        end 
-
-        @tabla.insert(valores)
-      end
-
-      define_method("save!") do
-        if @id.nil?
-          define_singleton_method("id") do
-            @id
-          end
-        end
-        @id = self.class.nueva_entrada(self)
-      end
-
-      define_method("refresh!") do
-        if @id.nil?
-          raise "Falla! Este objeto no tiene id!"
-        end
-        
-        mi_entrada = self.class.tabla.entries.find {|hash| hash[:id] == self.id}
-        self.class.tipos.keys.each {|atributo| self.send("#{atributo}=", mi_entrada[atributo])}
-      end
-
-      define_method("forget!") do
-        if @id.nil?
-          raise "Falla! Este objeto no tiene id!"
-        end
-
-        self.class.remover_entrada(self.id)
-        self.remove_instance_variable("@id")
-      end
-
-      define_singleton_method("all_instances") do
-        hashees = @tabla.entries
-
-        objetos_persisitidos = []
-
-        hashees.each {|hash| objetos_persisitidos.append(self.crear_segun_hash(hash))}
-        
-        return objetos_persisitidos
-      end
-
       define_singleton_method("crear_segun_hash") do |hash|
         instancia = self.new
 
@@ -126,8 +144,9 @@ class Class
         end
 
         hash.keys.each do |atributo|
+          # puts atributo
           if atributo != :id && @tipos[atributo].instance_methods.include?(:save!)
-            objeto_atributo = @tipos[atributo].crear_segun_hash(@tipos[atributo].entrada_por_id(hash[atributo]))
+            objeto_atributo = @tipos[atributo].crear_segun_hash(@tipos[atributo].refresh!(hash[atributo]))
             instancia.send("#{atributo}=", objeto_atributo)
           else
             instancia.send("#{atributo}=", hash[atributo])
@@ -135,6 +154,8 @@ class Class
         end
         return instancia
       end
+
+      self.include(Persistible)
 
     else
        @tipos[descripcion[:named]] = tipo
