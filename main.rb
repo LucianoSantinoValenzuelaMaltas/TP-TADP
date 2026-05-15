@@ -35,7 +35,7 @@ class Class
       end
 
       define_singleton_method("respond_to_missing?") do |nombre_metodo, include_private = false|
-        nombre_metodo.to_s.start_with?("find_by_") || super
+        nombre_metodo.to_s.start_with?("find_by_") || super(nombre_metodo, include_private = false)
       end
       
       @tipos = {}
@@ -54,17 +54,27 @@ class Class
         @tabla.delete(id)
       end
 
-      define_singleton_method("nueva_entrada") do |instancia|
-        valores = {}
-        @tipos.keys.each {|atributo| valores[atributo] = instancia.send("#{atributo}")}
-        @tabla.insert(valores)
+      define_singleton_method("entrada_por_id") do |id|
+        @tabla.entries.find {|hash| hash[:id] == id}
       end
 
-      define_singleton_method("actualizar_entrada") do |instancia|
+      define_singleton_method("nueva_entrada") do |instancia|
         valores = {}
-        @tipos.keys.each {|atributo| valores[atributo] = instancia.send("#{atributo}")}
-        valores[:id] = instancia.id
-        self.remover_entrada(instancia.id)
+
+        @tipos.keys.each do |atributo|
+          if instancia.send(atributo).respond_to?(:save!)
+            id = instancia.send(atributo).save! 
+            valores[atributo] = id
+          else
+            valores[atributo] = instancia.send("#{atributo}")
+          end
+        end
+
+        if !instancia.id.nil?
+          valores[:id] = instancia.id
+          self.remover_entrada(instancia.id)
+        end 
+
         @tabla.insert(valores)
       end
 
@@ -73,12 +83,8 @@ class Class
           define_singleton_method("id") do
             @id
           end
-
-          @id = self.class.nueva_entrada(self)
-        
-        else          
-          self.class.actualizar_entrada(self)
         end
+        @id = self.class.nueva_entrada(self)
       end
 
       define_method("refresh!") do
@@ -119,7 +125,14 @@ class Class
           @id = valor
         end
 
-        hash.keys.each {|clave| instancia.send("#{clave}=", hash[clave])}
+        hash.keys.each do |atributo|
+          if atributo != :id && @tipos[atributo].instance_methods.include?(:save!)
+            objeto_atributo = @tipos[atributo].crear_segun_hash(@tipos[atributo].entrada_por_id(hash[atributo]))
+            instancia.send("#{atributo}=", objeto_atributo)
+          else
+            instancia.send("#{atributo}=", hash[atributo])
+          end
+        end
         return instancia
       end
 
@@ -129,6 +142,10 @@ class Class
   end
 end
 
+class Auto
+  has_one String, named: :marca
+  has_one String, named: :modelo
+end
 
 class Person
 
@@ -140,6 +157,8 @@ class Person
 
   has_one Boolean, named: :admin
 
+  has_one Auto, named: :auto
+
   attr_accessor :some_other_non_persistible_attribute
 
   def es_mayor?
@@ -148,9 +167,6 @@ class Person
   def has_last_name(last_name)
     self.last_name == last_name
   end
-
-
-
 end
 
 puts Person.new.respond_to?(:first_name)
@@ -159,19 +175,30 @@ puts Person.new.respond_to?(:save!)
 a1 = Person.new
 a2 = Person.new
 
+camaro = Auto.new
+camaro.marca = "Chevrolet"
+camaro.modelo = "Camaro ZL1"
+
+tt = Auto.new
+tt.marca = "Audi"
+tt.modelo = "TT RS"
+
 a1.first_name = "Luciano"
 a1.last_name = "Valenzuela"
 a1.age = 22
 a1.admin = true
+a1.auto = camaro
 
 a2.first_name = "Natalia"
 a2.last_name = "Maltas"
 a2.age = 49
 a2.admin = false
+a2.auto = tt
 
 a1.save!
 
 puts Person.all_instances
+puts Person.all_instances.at(0).auto.modelo
 
 a2.save!
 
@@ -196,9 +223,9 @@ puts Person.find_by_age(22)
 puts Person.find_by_last_name("Maltas")
 puts "find_by de mensajes"
 puts Person.find_by_es_mayor?(false)
-puts Person.find_by_has_last_name("Maltas")
+#puts Person.find_by_has_last_name("Maltas")
 
-Person.tabla.clear
+#Person.tabla.clear
 
 # puts a1.first_name
 
@@ -224,5 +251,5 @@ Person.tabla.clear
 
 # Person.new.refresh!
 
-binding.pry
+#binding.pry
 
