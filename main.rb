@@ -51,7 +51,7 @@ class Tabla
 
       def method_missing(nombre_metodo, *argumentos, &block)
         if nombre_metodo.to_s.start_with?("find_by_")
-          lista_de_objetos = @tabla.entries.map { |hash| @owner.crear_segun_hash(hash)}
+          lista_de_objetos = self.all_instances
           return lista_de_objetos.select { |objeto| objeto.send(nombre_metodo.to_s.delete_prefix("find_by_")) === argumentos.first}      
         else
           super(nombre_metodo, *argumentos, &block)
@@ -160,6 +160,22 @@ class Class
     else
        @tipos[descripcion[:named]] = tipo
     end
+  end
+
+  def has_many(tipo, descripcion)
+    self.has_one(tipo, descripcion)
+    self.instance_variable_set(descripcion[:named],[])
+    
+    define_method(descripcion[:named].to_s) do
+      "@#{descripcion[:named].to_s}"
+    end
+    
+    define_method("#{descripcion[:named].to_s}=") do |valor|
+      "@#{descripcion[:named].to_s}" = valor
+    end
+
+    #Una variable compartida que la inicializó como lista y ya está :P
+
   end
 end
 
