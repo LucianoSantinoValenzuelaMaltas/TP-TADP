@@ -122,13 +122,34 @@ class Tabla
   end
 end
 
-class Class
+class Module
   def has_one(tipo, descripcion)
     attr_accessor descripcion[:named]
 
-    @tabla = Tabla.new(self)
-
     if @tipos.nil?
+      forma_de_herencia = 'included'
+      unless instance_of?(Module)
+        @tabla = Tabla.new(self)
+        forma_de_herencia = 'inherited'
+      end
+
+      define_singleton_method("#{forma_de_herencia}") do |subclase|
+        super(subclase)
+        atributos = @tipos.keys
+
+        unless @listas_many.nil?
+          @listas_many.each { |atributo_lista| subclase.has_many(@tipos[atributo_lista], named: atributo_lista) }
+          atributos = @tipos.keys.select { |atributo| !@listas_many.include?(atributo) }
+        end
+
+        unless atributos.nil?
+          atributos
+            .each { |atributo| subclase.has_one(@tipos[atributo], named: atributo) }
+        end
+
+        nil
+      end
+
       define_singleton_method('method_missing') do |nombre_metodo, *argumentos, &block|
         if @tabla.respond_to?(nombre_metodo)
           @tabla.send(nombre_metodo, *argumentos, &block)
@@ -199,18 +220,24 @@ class Class
       end
 
       define_method('initialize') do
-        self.class.manys.each { |elemento| instance_variable_set(elemento, []) }
+        self.class.manys.each { |elemento| send("#{elemento}=", []) }
       end
     end
 
-    @listas_many.push("@#{descripcion[:named]}")
+    @listas_many.push(descripcion[:named])
 
     has_one(tipo, descripcion)
   end
 end
 
-class Auto
+module Vehiculo
   has_one String, named: :marca
+  has_one String, named: :patente
+end
+
+class Auto
+  include Vehiculo
+
   has_one String, named: :modelo
 end
 
@@ -253,14 +280,17 @@ a2 = Person.new
 camaro = Auto.new
 camaro.marca = 'Chevrolet'
 camaro.modelo = 'Camaro ZL1'
+camaro.patente = 'ABC1230'
 
 corvette = Auto.new
 corvette.marca = 'Chevrolet'
 corvette.modelo = 'Corvette ZR1'
+corvette.patente = 'ABC1234'
 
 tt = Auto.new
 tt.marca = 'Audi'
 tt.modelo = 'TT RS'
+tt.patente = 'ABC1235'
 
 a31 = Celular.new
 a31.marca = 'Samsung'
@@ -343,7 +373,7 @@ p Person.all_instances
 # binding.pry
 
 class Piloto < Person
-  has_one String, named: :licencia
+  # has_one String, named: :licencia
 end
 
 p Piloto.instance_methods.include?(:first_name)
@@ -352,11 +382,12 @@ p Piloto.instance_methods.include?(:admin)
 p Piloto.instance_methods.include?(:age)
 p Piloto.instance_methods.include?(:celular)
 p Piloto.instance_methods.include?(:autos)
-p Piloto.instance_methods.include?(:licencia)
+# p Piloto.instance_methods.include?(:licencia)
 
 f1 = Auto.new
 f1.marca = 'Red Bull'
 f1.modelo = 'F1 2026'
+f1.patente = 'ABC0001'
 
 s26 = Celular.new
 s26.marca = 'Samsung'
