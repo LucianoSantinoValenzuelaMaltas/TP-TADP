@@ -42,7 +42,21 @@ end
 class Tabla
   def initialize(owner)
     @owner = owner
-    @tabla = TADB::DB.table("#{owner}")
+
+    unless @owner.instance_of?(Module)
+      @tabla = TADB::DB.table("#{owner}")
+      define_singleton_method('entradas') do
+        hashees = @tabla.entries
+
+        objetos_persisitidos = []
+
+        hashees.each { |hash| objetos_persisitidos.append(@owner.crear_segun_hash(hash)) }
+
+        objetos_persisitidos
+      end
+    end
+
+    nil
   end
 
   def eliminar_tabla
@@ -65,13 +79,14 @@ class Tabla
   end
 
   def all_instances
-    hashees = @tabla.entries
+    clases_de_las_tablas = @owner.hijos
+    clases_de_las_tablas.push(@owner) unless @tabla.nil?
 
-    objetos_persisitidos = []
+    lista_de_objetos = []
 
-    hashees.each { |hash| objetos_persisitidos.append(@owner.crear_segun_hash(hash)) }
+    clases_de_las_tablas.each { |clase| clase.entradas.each { |entrada| lista_de_objetos.push(entrada) } }
 
-    objetos_persisitidos
+    lista_de_objetos
   end
 
   def forget!(id)
@@ -128,9 +143,17 @@ class Module
 
     if @tipos.nil?
       forma_de_herencia = 'included'
-      unless instance_of?(Module)
-        @tabla = Tabla.new(self)
-        forma_de_herencia = 'inherited'
+      @tabla = Tabla.new(self)
+      forma_de_herencia = 'inherited' unless instance_of?(Module)
+      @hijos = []
+
+      define_singleton_method('hijos') do
+        hijos_totales = []
+        @hijos.each { |hijo| hijos_totales.push(hijo) }
+        @hijos.each do |hijo|
+          hijo.hijos.each { |nieto| hijos_totales.push(nieto) }
+        end
+        hijos_totales
       end
 
       define_singleton_method("#{forma_de_herencia}") do |subclase|
@@ -146,6 +169,8 @@ class Module
           atributos
             .each { |atributo| subclase.has_one(@tipos[atributo], named: atributo) }
         end
+
+        @hijos.push(subclase)
 
         nil
       end
@@ -319,11 +344,25 @@ a2.autos.push(tt)
 
 a1.save!
 
+p 'Person'
+p Person.hijos
+p Person.respond_to?(:all_instances)
+p Person.respond_to?(:entradas)
+p 'Vehículo'
+p Vehiculo.hijos
+p Vehiculo.respond_to?(:all_instances)
+p Vehiculo.respond_to?(:entradas)
+p 'Auto'
+p Auto.hijos
+p Auto.respond_to?(:all_instances)
+p Auto.respond_to?(:entradas)
+
 p Person.all_instances
 # p Person.all_instances.at(0).auto.modelo
 
-# a2.save!
+a2.save!
 
+p Vehiculo.all_instances
 # puts Person.all_instances.at(1).first_name
 # puts Person.all_instances.at(1).id
 
