@@ -90,8 +90,8 @@ class Tabla
   end
 
   def forget!(id)
+    # Debería eliminar también las tablas hijas?
     @tabla.delete(id)
-    # Debería eliminar también las tablas hijas
   end
 
   def refresh!(id)
@@ -137,9 +137,60 @@ class Tabla
   end
 end
 
+class Validador
+  def validate!(valor, tipo)
+    return if valor.is_a?(tipo) or (valor.is_a?(Array) and valor.all? { |e| e.is_a?(tipo) })
+
+    raise "Falla! el atributo no es de tipo #{tipo}!"
+  end
+
+  def validar_no_blank(key_value, atributo_valor)
+    if key_value and (atributo_valor.nil? or (atributo_valor.respond_to?(:empty?) and atributo_valor.empty?))
+      raise 'Falla! el atributo no puede estar vacío!'
+    end
+
+    nil
+  end
+
+  def validar_from(minimo, valor)
+    raise "Falla! #{minimo} es menor que #{minimo}!" if minimo > valor and !valor.nil?
+
+    nil
+  end
+
+  def validar_to(maximo, valor)
+    raise "Falla! #{maximo} es mayor que #{maximo}!" if maximo > valor and !valor.nil?
+
+    nil
+  end
+
+  def validar_validate(block, valor)
+    if valor.is_a?(Array) and valor.any? { |elemento| !block.call(elemento) }
+      raise "Falla! existen elementos de la lista, que no cumplen con #{block}!"
+
+    elsif !block.call(valor)
+      raise "Falla! el atributo no cumple con #{block}!"
+    end
+
+    nil
+  end
+
+  def from_validate; end
+end
+
 class Module
   def has_one(tipo, descripcion)
-    attr_accessor descripcion[:named]
+    attr_reader descripcion[:named]
+
+    define_method("#{descripcion[:named]}=") do |valor|
+      validador = Validador.new
+      validador.validate!(valor, self.class.tipos[descripcion[:named]])
+      descripcion.keys[1..-1].each do |campo_extra|
+        validador.send("validar_#{campo_extra}".to_sym, descripcion[campo_extra], valor)
+      end
+
+      instance_variable_set("@#{descripcion[:named]}", valor)
+    end
 
     if @tipos.nil?
       forma_de_herencia = 'included'
@@ -301,6 +352,9 @@ puts Person.new.respond_to?(:autos)
 
 a1 = Person.new
 a2 = Person.new
+
+# caca = Auto.new
+# caca.marca = 1
 
 camaro = Auto.new
 camaro.marca = 'Chevrolet'
