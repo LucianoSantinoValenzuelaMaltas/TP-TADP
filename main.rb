@@ -98,14 +98,14 @@ class Tabla
     @tabla.entries.find { |hash| hash[:id] == id } # Modificar el método refresh en Persistible
   end
 
-  def crear_entrada_sin_array(objeto, atributos_lista)
+  def crear_entrada_sin_array(objeto, lista_atributos)
     entrada = {}
 
-    atributos_lista.each do |atributo|
+    lista_atributos.each do |atributo|
       if objeto.send(atributo).respond_to?(:save!)
         id = objeto.send(atributo).save!
         entrada[atributo] = id
-      else
+      elsif !objeto.send(atributo).nil?
         entrada[atributo] = objeto.send("#{atributo}")
       end
     end
@@ -139,9 +139,11 @@ end
 
 class Validador
   def validate!(valor, tipo)
-    return if valor.is_a?(tipo) or (valor.is_a?(Array) and valor.all? { |e| e.is_a?(tipo) })
+    unless valor.is_a?(tipo) or (valor.is_a?(Array) and valor.all? { |e| e.is_a?(tipo) }) or valor.nil?
+      raise "Falla! el atributo no es de tipo #{tipo}!"
+    end
 
-    raise "Falla! el atributo no es de tipo #{tipo}!"
+    nil
   end
 
   def validar_no_blank(key_value, atributo_valor)
@@ -153,13 +155,13 @@ class Validador
   end
 
   def validar_from(minimo, valor)
-    raise "Falla! #{minimo} es menor que #{minimo}!" if minimo > valor and !valor.nil?
+    raise "Falla! #{valor} es menor que #{minimo}!" if minimo > valor and !valor.nil?
 
     nil
   end
 
   def validar_to(maximo, valor)
-    raise "Falla! #{maximo} es mayor que #{maximo}!" if maximo > valor and !valor.nil?
+    raise "Falla! #{valor} es mayor que #{maximo}!" if maximo > valor and !valor.nil?
 
     nil
   end
@@ -264,8 +266,11 @@ class Module
 
         @tipos.keys.each do |atributo|
           if instancia.send(atributo).is_a?(Array)
-            hash[atributo].split(',').each do |id|
-              instancia.send(atributo).push(@tipos[atributo].crear_segun_hash(@tipos[atributo].refresh!(id)))
+            ids = hash[atributo].split(',')
+            unless ids.empty?
+              ids.each do |id|
+                instancia.send(atributo).push(@tipos[atributo].crear_segun_hash(@tipos[atributo].refresh!(id)))
+              end
             end
 
           elsif @tipos[atributo].instance_methods.include?(:save!)
