@@ -140,6 +140,7 @@ end
 class Validador
   def validate!(valor, tipo)
     unless valor.is_a?(tipo) or (valor.is_a?(Array) and valor.all? { |e| e.is_a?(tipo) }) or valor.nil?
+      p valor
       raise "Falla! el atributo no es de tipo #{tipo}!"
     end
 
@@ -177,24 +178,52 @@ class Validador
     nil
   end
 
-  def from_validate; end
+  def validar_default(hash, objeto)
+    return unless objeto.send(hash[:named]).nil?
+
+    objeto.send("#{hash[:named]}=", hash[:default])
+  end
 end
 
 class Module
   def has_one(tipo, descripcion)
-    attr_reader descripcion[:named]
-
-    define_method("#{descripcion[:named]}=") do |valor|
-      validador = Validador.new
-      validador.validate!(valor, self.class.tipos[descripcion[:named]])
-      descripcion.keys[1..-1].each do |campo_extra|
-        validador.send("validar_#{campo_extra}".to_sym, descripcion[campo_extra], valor)
-      end
-
-      instance_variable_set("@#{descripcion[:named]}", valor)
-    end
+    attr_accessor descripcion[:named]
 
     if @tipos.nil?
+
+      if respond_to?(:new)
+        define_singleton_method('new') do |*args, &block|
+          objeto = super(*args, &block)
+
+          @listas_many.each { |elemento| objeto.send("#{elemento}=", []) } unless @listas_many.nil?
+
+          validador = Validador.new
+          @tipos.keys.each do |atributo|
+            unless objeto.class.hashees_atributos[atributo][:default].nil?
+              validador.validar_default(objeto.class.hashees_atributos[atributo],
+                                        objeto)
+            end
+          end
+          objeto
+        end
+      end
+
+      define_singleton_method('save!') do |objeto|
+        validador = Validador.new
+        @tipos.keys.each do |atributo|
+          unless @hashees_atributos[atributo][:default].nil?
+            validador.validar_default(@hashees_atributos[atributo],
+                                      objeto)
+          end
+          validador.validate!(objeto.send(atributo), @tipos[atributo])
+          @hashees_atributos[atributo].except(:default, :named).each do |campo_extra|
+            validador.send("validar_#{campo_extra}".to_sym, @hashees_atributos[atributo][campo_extra],
+                           objeto.send(atributo))
+          end
+        end
+        @tabla.save!(objeto)
+      end
+
       forma_de_herencia = 'included'
       @tabla = Tabla.new(self)
       forma_de_herencia = 'inherited' unless instance_of?(Module)
@@ -214,13 +243,15 @@ class Module
         atributos = @tipos.keys
 
         unless @listas_many.nil?
-          @listas_many.each { |atributo_lista| subclase.has_many(@tipos[atributo_lista], named: atributo_lista) }
+          @listas_many.each do |atributo_lista|
+            subclase.has_many(@tipos[atributo_lista], @hashees_atributos[atributo_lista])
+          end
           atributos = @tipos.keys.select { |atributo| !@listas_many.include?(atributo) }
         end
 
         unless atributos.nil?
           atributos
-            .each { |atributo| subclase.has_one(@tipos[atributo], named: atributo) }
+            .each { |atributo| subclase.has_one(@tipos[atributo], @hashees_atributos[atributo]) }
         end
 
         @hijos.push(subclase)
@@ -244,13 +275,11 @@ class Module
 
       @tipos[descripcion[:named]] = tipo
 
-      define_singleton_method('tipos') do
-        @tipos
-      end
+      @hashees_atributos = {}
 
-      define_singleton_method('tabla') do
-        @tabla
-      end
+      @hashees_atributos[descripcion[:named]] = descripcion
+
+      singleton_class.attr_reader :tabla, :tipos, :hashees_atributos
 
       define_singleton_method('crear_segun_hash') do |hash|
         instancia = new
@@ -289,6 +318,7 @@ class Module
 
     else
       @tipos[descripcion[:named]] = tipo
+      @hashees_atributos[descripcion[:named]] = descripcion # Podría fusionar los 2 en 1 agregando al hash su tipo
     end
   end
 
@@ -298,10 +328,6 @@ class Module
 
       define_singleton_method('manys') do
         @listas_many
-      end
-
-      define_method('initialize') do
-        self.class.manys.each { |elemento| send("#{elemento}=", []) }
       end
     end
 
@@ -332,7 +358,7 @@ class Person
 
   has_one String, named: :last_name
 
-  has_one Numeric, named: :age
+  has_one Numeric, named: :age, default: 28
 
   has_one Boolean, named: :admin
 
@@ -498,10 +524,12 @@ Auto.tabla.eliminar_tabla
 max = Piloto.new
 max.first_name = 'Max'
 max.last_name = 'Verstappen'
-max.age = 22
+# max.age = 22
 max.admin = true
 max.celular = s26
 max.autos.push(f1)
+
+p max.age
 
 max.save!
 
