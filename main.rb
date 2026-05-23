@@ -146,6 +146,12 @@ class Tabla
 end
 
 class Validador
+  def validar_default(hash, objeto)
+    return unless objeto.send(hash[:named]).nil?
+
+    objeto.send("#{hash[:named]}=", hash[:default])
+  end
+
   def validate!(valor, tipo)
     unless valor.is_a?(tipo) or (valor.is_a?(Array) and valor.all? { |e| e.is_a?(tipo) }) or valor.nil?
       p valor
@@ -154,28 +160,36 @@ class Validador
 
     nil
   end
+end
 
-  def validar_no_blank(key_value, atributo_valor)
+class No_blank
+  def validar(key_value, atributo_valor)
     if key_value and (atributo_valor.nil? or (atributo_valor.respond_to?(:empty?) and atributo_valor.empty?))
       raise 'Falla! el atributo no puede estar vacío!'
     end
 
     nil
   end
+end
 
-  def validar_from(minimo, valor)
+class From
+  def validar(minimo, valor)
     raise "Falla! #{valor} es menor que #{minimo}!" if minimo > valor and !valor.nil?
 
     nil
   end
+end
 
-  def validar_to(maximo, valor)
+class To
+  def validar(maximo, valor)
     raise "Falla! #{valor} es mayor que #{maximo}!" if maximo > valor and !valor.nil?
 
     nil
   end
+end
 
-  def validar_validate(block, valor)
+class Validate
+  def validar(block, valor)
     if valor.is_a?(Array) and valor.any? { |elemento| !block.call(elemento) }
       raise "Falla! existen elementos de la lista, que no cumplen con #{block}!"
 
@@ -184,12 +198,6 @@ class Validador
     end
 
     nil
-  end
-
-  def validar_default(hash, objeto)
-    return unless objeto.send(hash[:named]).nil?
-
-    objeto.send("#{hash[:named]}=", hash[:default])
   end
 end
 
@@ -225,8 +233,10 @@ class Module
           end
           validador.validate!(objeto.send(atributo), @tipos[atributo])
           @hashees_atributos[atributo].except(:default, :named).each do |campo_extra|
-            validador.send("validar_#{campo_extra}".to_sym, @hashees_atributos[atributo][campo_extra],
-                           objeto.send(atributo))
+            # validador.send("validar_#{campo_extra}".to_sym, @hashees_atributos[atributo][campo_extra],
+            #                objeto.send(atributo))
+            Object.const_get(campo_extra.to_s.capitalize).new
+                  .validar(@hashees_atributos[atributo][campo_extra], objeto.send(atributo))
           end
         end
         @tabla.save!(objeto)
