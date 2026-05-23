@@ -27,8 +27,10 @@ module Persistible
   def refresh!
     raise 'Falla! Este objeto no tiene id!' if @id.nil?
 
-    mi_entrada = self.class.refresh!(id)
-    self.class.tipos.keys.each { |atributo| send("#{atributo}=", mi_entrada[atributo]) }
+    objeto_persistido = self.class.buscar_objeto(@id)
+    self.class.tipos.keys.each do |atributo|
+      send("#{atributo}=", objeto_persistido.send(atributo))
+    end
   end
 
   def forget!
@@ -53,6 +55,12 @@ class Tabla
         hashees.each { |hash| objetos_persisitidos.append(@owner.crear_segun_hash(hash)) }
 
         objetos_persisitidos
+      end
+
+      define_singleton_method('buscar_objeto') do |id|
+        hash = obtener_hash_id(id)
+
+        @owner.crear_segun_hash(hash)
       end
     end
 
@@ -94,8 +102,8 @@ class Tabla
     @tabla.delete(id)
   end
 
-  def refresh!(id)
-    @tabla.entries.find { |hash| hash[:id] == id } # Modificar el método refresh en Persistible
+  def obtener_hash_id(id)
+    @tabla.entries.find { |hash| hash[:id] == id }
   end
 
   def crear_entrada_sin_array(objeto, lista_atributos)
@@ -294,16 +302,16 @@ class Module
         instancia.send(:id=, hash[:id])
 
         @tipos.keys.each do |atributo|
-          if instancia.send(atributo).is_a?(Array)
+          if instancia.send(atributo).is_a?(Array) and !hash[atributo].nil?
             ids = hash[atributo].split(',')
             unless ids.empty?
               ids.each do |id|
-                instancia.send(atributo).push(@tipos[atributo].crear_segun_hash(@tipos[atributo].refresh!(id)))
+                instancia.send(atributo).push(@tipos[atributo].buscar_objeto(id))
               end
             end
 
           elsif @tipos[atributo].instance_methods.include?(:save!)
-            objeto = @tipos[atributo].crear_segun_hash(@tipos[atributo].refresh!(hash[atributo]))
+            objeto = @tipos[atributo].buscar_objeto(hash[atributo])
             instancia.send("#{atributo}=", objeto)
 
           else
@@ -377,9 +385,9 @@ class Person
   end
 end
 
-puts Person.new.respond_to?(:first_name)
-puts Person.new.respond_to?(:save!)
-puts Person.new.respond_to?(:autos)
+# puts Person.new.respond_to?(:first_name)
+# puts Person.new.respond_to?(:save!)
+# puts Person.new.respond_to?(:autos)
 
 a1 = Person.new
 a2 = Person.new
@@ -429,25 +437,25 @@ a2.autos.push(tt)
 
 a1.save!
 
-p 'Person'
-p Person.hijos
-p Person.respond_to?(:all_instances)
-p Person.respond_to?(:entradas)
-p 'Vehículo'
-p Vehiculo.hijos
-p Vehiculo.respond_to?(:all_instances)
-p Vehiculo.respond_to?(:entradas)
-p 'Auto'
-p Auto.hijos
-p Auto.respond_to?(:all_instances)
-p Auto.respond_to?(:entradas)
+# p 'Person'
+# p Person.hijos
+# p Person.respond_to?(:all_instances)
+# p Person.respond_to?(:entradas)
+# p 'Vehículo'
+# p Vehiculo.hijos
+# p Vehiculo.respond_to?(:all_instances)
+# p Vehiculo.respond_to?(:entradas)
+# p 'Auto'
+# p Auto.hijos
+# p Auto.respond_to?(:all_instances)
+# p Auto.respond_to?(:entradas)
 
-p Person.all_instances
+# p Person.all_instances
 # p Person.all_instances.at(0).auto.modelo
 
 a2.save!
 
-p Vehiculo.all_instances
+# p Vehiculo.all_instances
 # puts Person.all_instances.at(1).first_name
 # puts Person.all_instances.at(1).id
 
@@ -471,19 +479,21 @@ p Vehiculo.all_instances
 # puts Person.find_by_es_mayor?(false)
 # puts Person.find_by_has_last_name("Maltas")
 
-# puts a1.first_name
+# p a1.first_name
 
 # a1.save!
 
 # puts a1.id
 
-# a1.first_name = "Santino"
+# a1.first_name = 'Santino'
 
-# puts a1.first_name
+# p a1.first_name
+# p a1
 
 # a1.refresh!
 
-# puts a1.first_name
+# p a1
+# p a1.first_name
 
 # a1.last_name = "Valenzuela Maltas"
 # a1.save!
@@ -500,12 +510,12 @@ class Piloto < Person
   # has_one String, named: :licencia
 end
 
-p Piloto.instance_methods.include?(:first_name)
-p Piloto.instance_methods.include?(:last_name)
-p Piloto.instance_methods.include?(:admin)
-p Piloto.instance_methods.include?(:age)
-p Piloto.instance_methods.include?(:celular)
-p Piloto.instance_methods.include?(:autos)
+# p Piloto.instance_methods.include?(:first_name)
+# p Piloto.instance_methods.include?(:last_name)
+# p Piloto.instance_methods.include?(:admin)
+# p Piloto.instance_methods.include?(:age)
+# p Piloto.instance_methods.include?(:celular)
+# p Piloto.instance_methods.include?(:autos)
 # p Piloto.instance_methods.include?(:licencia)
 
 f1 = Auto.new
